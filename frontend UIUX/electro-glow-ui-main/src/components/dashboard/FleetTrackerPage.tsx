@@ -1,9 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
-import L from "leaflet";
-import MarkerClusterGroup from "react-leaflet-cluster";
-import { CircleMarker, MapContainer, Marker, Polyline, TileLayer, Tooltip } from "react-leaflet";
-import "leaflet/dist/leaflet.css";
 import {
   Drawer,
   DrawerContent,
@@ -12,6 +8,7 @@ import {
   DrawerTitle,
 } from "@/components/ui/drawer";
 import { AppShell } from "@/components/dashboard/AppShell";
+import { FleetTrackerMap } from "@/components/dashboard/FleetTrackerMap";
 import { generateFleetTrucks, generateTruckEvents } from "@/lib/syntheticData";
 import { usePlantState } from "@/hooks/usePlantState";
 import type { FleetTruck, ProductionLocation, TruckEvent } from "@/types/operations";
@@ -28,23 +25,6 @@ function clamp(value: number, min: number, max: number) {
 
 function lerp(a: number, b: number, t: number) {
   return a + (b - a) * t;
-}
-
-function makeTruckIcon(heading: number, status: FleetTruck["status"]) {
-  const fill = STATUS_COLOR[status];
-  return L.divIcon({
-    html: `<div style="transform: rotate(${heading}deg); width:30px; height:30px; display:grid; place-items:center;">
-      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <path d="M3 8h11v8H3z" fill="${fill}" opacity="0.95"/>
-        <path d="M14 10h4l3 3v3h-7z" fill="${fill}" opacity="0.75"/>
-        <circle cx="7" cy="18" r="2" fill="#0A0C10"/>
-        <circle cx="17" cy="18" r="2" fill="#0A0C10"/>
-      </svg>
-    </div>`,
-    className: "",
-    iconSize: [30, 30],
-    iconAnchor: [15, 15],
-  });
 }
 
 function advanceTruck(truck: FleetTruck): FleetTruck {
@@ -91,10 +71,6 @@ function buildEvent(truck: FleetTruck): TruckEvent {
   };
 }
 
-function utilizationColor(site: ProductionLocation["status"]) {
-  return site === "high-load" ? "#ff6b35" : "#00e5ff";
-}
-
 export function FleetTrackerPage() {
   const plantState = usePlantState();
   const [trucks, setTrucks] = useState<FleetTruck[]>(() => generateFleetTrucks(60));
@@ -104,6 +80,7 @@ export function FleetTrackerPage() {
   const [showFleet, setShowFleet] = useState(true);
   const [showSites, setShowSites] = useState(true);
   const [showCorridors, setShowCorridors] = useState(true);
+  const [isMapReady, setIsMapReady] = useState(false);
 
   const productionSites = plantState.data?.production_locations ?? [];
   const mapRoutes = plantState.data?.transport_routes ?? [];
@@ -117,6 +94,10 @@ export function FleetTrackerPage() {
     () => productionSites.find((site) => site.site_id === selectedSiteId) ?? null,
     [selectedSiteId, productionSites],
   );
+
+  useEffect(() => {
+    setIsMapReady(true);
+  }, []);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -191,66 +172,22 @@ export function FleetTrackerPage() {
           </div>
 
           <div className="h-[68vh] overflow-hidden rounded-xl border border-white/10">
-            <MapContainer center={[20.5937, 78.9629]} zoom={5} className="h-full w-full">
-              <TileLayer
-                attribution='&copy; Stadia Maps, &copy; OpenMapTiles, &copy; OpenStreetMap contributors'
-                url="https://tiles.stadiamaps.com/tiles/alidade_smooth_dark/{z}/{x}/{y}{r}.png"
+            {isMapReady ? (
+              <FleetTrackerMap
+                mapRoutes={mapRoutes}
+                onSelectSite={setSelectedSiteId}
+                onSelectTruck={setSelectedTruckId}
+                productionSites={productionSites}
+                showCorridors={showCorridors}
+                showFleet={showFleet}
+                showSites={showSites}
+                trucks={trucks}
               />
-
-              {showSites &&
-                productionSites.map((site) => (
-                  <CircleMarker
-                    key={site.site_id}
-                    center={[site.lat, site.lng]}
-                    radius={10 + site.utilization * 4}
-                    pathOptions={{
-                      color: utilizationColor(site.status),
-                      fillColor: utilizationColor(site.status),
-                      fillOpacity: 0.35,
-                      weight: 2,
-                    }}
-                    eventHandlers={{
-                      click: () => setSelectedSiteId(site.site_id),
-                    }}
-                  >
-                    <Tooltip direction="top" sticky>
-                      {site.name} | {(site.utilization * 100).toFixed(0)}%
-                    </Tooltip>
-                  </CircleMarker>
-                ))}
-
-              {showCorridors &&
-                mapRoutes.map((route) => (
-                  <Polyline
-                    key={`${route.route_id}-${route.shipment_id}`}
-                    positions={[
-                      [route.origin_lat, route.origin_lng],
-                      [route.destination_lat, route.destination_lng],
-                    ]}
-                    pathOptions={{
-                      color: STATUS_COLOR[route.status],
-                      weight: route.status === "critical" ? 4 : 2.8,
-                      opacity: 0.75,
-                      dashArray: route.status === "on-time" ? undefined : "8 6",
-                    }}
-                  />
-                ))}
-
-              {showFleet && (
-                <MarkerClusterGroup chunkedLoading>
-                  {trucks.map((truck) => (
-                    <Marker
-                      key={truck.truckId}
-                      position={[truck.lat, truck.lng]}
-                      icon={makeTruckIcon(truck.heading, truck.status)}
-                      eventHandlers={{
-                        click: () => setSelectedTruckId(truck.truckId),
-                      }}
-                    />
-                  ))}
-                </MarkerClusterGroup>
-              )}
-            </MapContainer>
+            ) : (
+              <div className="grid h-full w-full place-items-center bg-black/30 text-sm text-muted-foreground">
+                Loading operations map...
+              </div>
+            )}
           </div>
         </motion.section>
 
