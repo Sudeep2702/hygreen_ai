@@ -3,6 +3,8 @@ import type { BackendPlantState } from "@/types/operations";
 
 type PlantState = BackendPlantState;
 
+const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:5000").replace(/\/$/, "");
+
 function buildFallbackState(): PlantState {
   const now = Math.floor(Date.now() / 1000);
   const history = Array.from({ length: 24 }, (_, index) => {
@@ -99,7 +101,7 @@ function buildFallbackState(): PlantState {
 
 async function fetchPlantState(): Promise<PlantState> {
   try {
-    const response = await fetch("http://127.0.0.1:5000/state");
+    const response = await fetch(`${apiBaseUrl}/state`);
     if (!response.ok) {
       throw new Error("Backend state request failed");
     }
